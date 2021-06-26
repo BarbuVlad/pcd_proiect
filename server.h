@@ -16,6 +16,8 @@
 #include <arpa/inet.h>
 #include <resolv.h>
 #include <pthread.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #define SERV_TCP_PORT 5000
 #define MAXLINE 512
@@ -29,7 +31,7 @@
 
 typedef struct connections{
 	pid_t pid_child;
-	char username;
+	char username[50];
     //int pipe_fd[2];
 } connections;
 

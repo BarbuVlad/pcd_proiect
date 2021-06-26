@@ -40,16 +40,144 @@ void* adminThreadRoutine(void* args){
 
     int* _adminsockfd = (int*)args;
     //send successfull connection and setup establish
-    send(*_adminsockfd, "1", 1, 0);
-    printf("  DEBUG MSG: good admin credentials. In thread created. Sent code 1\n");
+    ssize_t a = send(*_adminsockfd, "1", 1, 0);
+    printf("  DEBUG MSG: good admin credentials. In thread created. Sent code 1 %ld\n",a);
 
     int _rc;
     char _line[MAXLINE];
-    char* req_type;
-    while(_rc = recv(*_adminsockfd, &_line, MAXLINE, 0)){
-    _line[_rc] = '\0';
-    }
+    //char* req_type;
 
+    //needed for request 102
+    char name_of_category[MAXLINE];
+    char full_path_category[MAXLINE];
+
+    //needed for request 103
+    char connected_users_string[50*conn_users_count];
+
+    //needed for request 104
+    char username_ban[50];
+    BOOL swap = FALSE;
+    int _err;
+    int statusCode;
+
+    while(_rc = recv(*_adminsockfd, &_line, MAXLINE, 0)){
+        _line[_rc] = '\0';
+
+        /*======REQUEST 102======*/
+        if(strncmp(_line, "102", 3) == 0){ ///< create new category request
+            /*
+            Body: 102 name_of_category
+            Action: extarct name_of_category and create a new directory in server root
+            */
+           sscanf (_line,"%*s %s",name_of_category);
+           printf("    DEBUG MSG: req. admin 102 %s \n",name_of_category);
+
+           struct stat st = {0};
+           strcpy(full_path_category, "./");
+           strcat(full_path_category, name_of_category);
+
+            if (stat(full_path_category, &st) == -1) { ///<dir does NOT exist, can create
+                printf("    ->DEBUG MSG: dir dose not exist, creating %s ...\n",full_path_category);
+                if (mkdir(full_path_category, 0777) != 0){ ///<error occurred at creating dir
+                    printf("    -->DEBUG MSG: error at creating...\n");
+                    // send(*_adminsockfd, "-1", 2, 0);
+                }
+            } else{///<dir does exist, cannot create
+                printf("    ->DEBUG MSG: dir  exist at path...  %s\n",full_path_category);
+                // send(*_adminsockfd, "-2", 2, 0);
+            }
+
+        /*======REQUEST 103======*/
+        } else if(strncmp(_line, "103", 3) == 0){ ///< view connected users request
+            printf("    DEBUG MSG: req. admin 103  \n");
+            strcpy(connected_users_string, "");
+            for(int i = 0; i<conn_users_count; i++){
+                strcat(connected_users_string, connected_users[i].username);
+                strcat(connected_users_string, " ");
+            }
+            send(*_adminsockfd, connected_users_string, strlen(connected_users_string), 0);
+
+        /*======REQUEST 104======*/
+        } else if(strncmp(_line, "104", 3) == 0){ ///< ban client request
+            printf("    DEBUG MSG: req. admin 104  \n");
+            //extarct username
+            sscanf (_line,"%*s %s",username_ban);
+            //is this user connected?
+            for(int i = 0; i<conn_users_count; i++){
+                if (strncmp(username_ban, connected_users[i].username, strlen(connected_users[i].username)) == 0){
+                    //connected user found - save pid
+                    //pid_ban = connected_users[i].pid_child;
+                    //kill child process TODO: handle this signal (close fd and send to client smth)
+                    printf("    ->DEBUG MSG: user is connected; killing process...  \n");
+                    kill(connected_users[i].pid_child, SIGTERM);
+                    swap=TRUE;
+                }
+                if(swap==TRUE){
+                    printf("     ->DEBUG MSG: swap data in connected_users...  \n");
+                    connected_users[i].pid_child = connected_users[i + 1].pid_child;
+                    strcpy(connected_users[i].username, connected_users[i + 1].username);
+                }
+            }
+            if(swap==TRUE){
+                pthread_mutex_lock(&mutex);
+                conn_users_count--;
+                pthread_mutex_unlock(&mutex);
+            }
+
+            //delete user from users list
+            swap = FALSE;
+            for(int i = 0; i<users_count; i++){
+                if (strncmp(username_ban, users[i].username, strlen(users[i].username)) == 0){
+                    swap=TRUE;///< start to swap from this i index
+                }
+                if(swap==TRUE){
+                    strcpy(users[i].username, users[i + 1].username);
+                    strcpy(users[i].password, users[i + 1].password);
+                }
+            }
+
+            //call .py to:
+                //delete from users.txt entry
+                //add to users_ban.txt
+                //delete objects added by that user
+            int pid_py_exec = fork();
+            if(pid_py_exec == -1){printf("    DEBUG MSG: ERROR at fork for python exec  \n");}
+
+            if(pid_py_exec == 0){ //Child process (exec py script)
+                _err = execlp("python3", "python3", "", username_ban, (char*) NULL);
+                 if(_err==-1){printf("    DEBUG MSG: ERROR at python exec  \n");}
+            }   else {//Parent process
+                waitpid(pid_py_exec, &_err, 0); //_err used as __stat_loc
+                 if(WIFEXITED(_err)){
+                     //EXECUTION TERMINATED SUCCESSFULLY (for the waited child)
+                    statusCode = WEXITSTATUS(_err);///< returned value or exit code value
+                     if(statusCode==0){///< if code 0 is success
+                        //SUCCESSFUL EXECUTION FROM CHILD
+                        printf("    DEBUG MSG: Successfull at python exec  \n");
+                    } else {
+                        //EXECUTION FAILURE FROM CHILD
+                         printf("    DEBUG MSG: ERROR at python exec...  \n");
+                    }
+                 }
+            }
+        
+            //python3 handle_request.py -ban -user1
+
+        /*======REQUEST 105======*/
+        } else if(strncmp(_line, "105", 3) == 0){ ///< add user request
+            printf("    DEBUG MSG: req. admin 105 \n");
+
+        /*======REQUEST 106======*/
+        } else if(strncmp(_line, "106", 3) == 0){ ///< delete user entry request
+            printf("    DEBUG MSG: req. admin 106  \n");
+        }
+
+        
+
+        printf("Line received %s\n",_line);
+
+
+    }
 
     //Stop admin
     pthread_mutex_lock(&mutex);
@@ -65,6 +193,7 @@ void main(int argc, char const *argv[]){
     readClients("users.txt", users, &users_count);///< bring in local memory the users
     readClients("admins.txt", admins, &admins_count);///< bring in local memory the users
 
+    printf("**DEBUG MSG: First admnin extract: username_admin:%s password:%s\n", admins[0].password, admins[0].username); 
     //Main local variabiles 
     //(to be inherited by children processes and shared with threads)
     struct sockaddr_in cli_addr, serv_addr;///< addresses for client and server
@@ -139,10 +268,6 @@ request5_parola[ strcspn(request5_parola, "\n") ] = 0;       //eliminare \n adau
             //else
             //test credentials
             sscanf (line,"%*s %s %s",username,password);
-            // ptr = sscanf(line, " ");
-            // strcpy(username, ptr);
-            // ptr = strtok(NULL, "\0");
-            // strcpy(password, ptr);
             printf("DEBUG MSG: crdentials extracted: username_admin:%s password:%s\n", username, password);
 
             for(int i = 0; i < admins_count; i++){
