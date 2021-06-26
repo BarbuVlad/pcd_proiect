@@ -9,12 +9,16 @@ void readClients(char* location, client clients[], int* client_count){
     }
     char client[101];
     while(fgets(client, sizeof(client), fp) != NULL) {
-        strcpy(clients[client_count_local].username, strtok(client, " "));
-        strcpy(users[client_count_local].password, strtok(NULL, "\n"));
-        client_count_local++;
+        // strcpy(clients[client_count_local].username, strtok(client, " "));
+        // strcpy(clients[client_count_local].password, strtok(NULL, "\n"));
+        sscanf (client,"%s %s",clients[client_count_local].username,clients[client_count_local].password);
+
+        clients[client_count_local].password[strcspn(clients[client_count_local].password, "\n")] = 0;       //eliminare \n adaugat de fgets
+        client_count_local+=1;
     }
     *client_count = client_count_local;
     fclose(fp);
+
 }
 
 void* adminThreadRoutine(void* args){
@@ -23,13 +27,10 @@ void* adminThreadRoutine(void* args){
             1 - successfull connection 
         (2 - bad password username  combination; done in main)
         (3 - admin connected; done in main thread)
-
         Requests to be received:
             (101 - login; solved for in main)
             102  - create new category 
             103 - 
-
-
     */
     printf("[Server PID: %d] Admin thread started...\n", getpid());
 
@@ -262,7 +263,12 @@ void main(int argc, char const *argv[]){
     readClients("users.txt", users, &users_count);///< bring in local memory the users
     readClients("admins.txt", admins, &admins_count);///< bring in local memory the users
 
-    printf("**DEBUG MSG: First admnin extract: username_admin:%s password:%s\n", admins[0].username, admins[0].password); 
+    // for(int i = 0; i < users_count; i++){
+    //     printf("PASSWORD: %s <--->",users[i].password);
+    //     printf("USERNAME: %s \n", users[i].username);
+
+    // }
+    printf("**DEBUG MSG: First admnin extract: username_admin:%s password:%s\n", admins[0].password, admins[0].username); 
     //Main local variabiles 
     //(to be inherited by children processes and shared with threads)
     struct sockaddr_in cli_addr, serv_addr;///< addresses for client and server
@@ -271,6 +277,8 @@ void main(int argc, char const *argv[]){
     int accepted_sockfd;///< to catch new client conn
     int rc;///< receive count; to read data from client
     char line[MAXLINE];///< line to read through socket
+
+    conn_users_count = 0;
 
     int admin_sockfd;///< to treat new admin conn (such that orignal fd is not lost)
     pthread_t id[2];
@@ -367,18 +375,85 @@ request5_parola[ strcspn(request5_parola, "\n") ] = 0;       //eliminare \n adau
 
             
 
-
-        
-
         } else if(strncmp(line, "1", 1) == 0){///< User login request
-            
-        
+            bzero(username, sizeof(username));
+            bzero(password, sizeof(password));
+
+            sscanf (line,"%*s %s %s",username,password);
+            password[strcspn(password, "\n")] = 0;
+            printf("DEBUG MSG: client crdentials extracted: username:%s...password:%s...\n", username, password);
+
+            pid_t pid_client = fork();
+            if(pid_client == -1){printf("DEBUG MSG: client fork failed \n"); exit(5);}
+
+
+/*
+    P: 3
+    C: 3 (id al copil)
+
+    P: 3+1 =4 ..
+    C:
+
+
+*/
+            /*======Solve client process======*/            
+            if(pid_client == 0){
+                //is this user already connected?
+                printf("^DEBUG MSG: child fork ID: %d \n", getpid());
+                //sleep(1);
+                for(int i = 0; i< conn_users_count; i++){
+                    // printf("  DEBUG MSG: is user connected...");
+                    // printf("\n");
+                    if(strncmp(username, connected_users[i].username, strlen(connected_users[i].username))==0){
+                        send(accepted_sockfd, "2", 1, 0);///< user connected
+                        printf("DEBUG MSG: client fork ended; user already connected (2) \n");
+                        kill(getpid(), SIGTERM);
+                        break;
+                    }
+                }
+                
+                //are credentials good?
+                BOOL x = FALSE;
+                for(int i= 0; i<users_count; i++){
+                    printf("  ->DEBUG MSG: comapre: username:%s...password:%s...\n", users[i].username, users[i].password);
+                    if(strlen(username) != strlen(users[i].username)){
+                        continue;
+                    }
+                    if(// both username and password must match
+                    strncmp(username, users[i].username,strlen(users[i].username))==0 &&
+                    strncmp(password, users[i].password,strlen(users[i].password))==0){///<
+                        x=TRUE;
+                        send(accepted_sockfd, "1", 1, 0);///< send 0 for successfull login 
+                        printf("DEBUG MSG: client fork continue; user connected! \n");
+                        break;
+                    }
+                }
+                //if no user found
+                if(x == FALSE){
+                    send(accepted_sockfd, "3", 1, 0);///< user not found
+                    printf("DEBUG MSG: client fork ended; no user found (3) \n");
+                    kill(getpid(), SIGTERM);
+                }
+
+
+            }
+            /*================================*/
+            /*=========Parent process=========*/
+            else if(pid_client > 0){
+                connected_users[conn_users_count].pid_child = pid_client;
+                //strcpy(connected_users[conn_users_count].username, username);
+                sscanf (username,"%s",connected_users[conn_users_count].username);
+
+                // pthread_mutex_lock(&mutex);
+                conn_users_count=conn_users_count+1;
+                // pthread_mutex_unlock(&mutex);
+printf("\n>>>DEBUG MSG: parent after child;  conn_users_count=%d usr=%s\n",conn_users_count, connected_users[conn_users_count-1].username);
+            }
         }
 
 
     }
-        
-    printf("%s.End of main...\n",users[users_count-1].username);
+
 
 
 
