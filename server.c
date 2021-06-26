@@ -48,14 +48,15 @@ void* adminThreadRoutine(void* args){
     //char* req_type;
 
     //needed for request 102
-    char name_of_category[MAXLINE];
-    char full_path_category[MAXLINE];
+    char name_of_category[30];
+    char full_path_category[50];
+    char raspuns_pentru_admin_request102[100];
 
     //needed for request 103
     char connected_users_string[50*conn_users_count];
 
     //needed for request 104
-    char username_ban[50];
+    char username_ban[20];
     BOOL swap = FALSE;
     int _err;
     int statusCode;
@@ -64,7 +65,20 @@ void* adminThreadRoutine(void* args){
     int status;
     char path[path_max];
     char python_command[100];
+    char raspuns_pentru_admin_request104[100];
 
+    //needed for request 105
+    char username_to_add[20];
+    char password_to_add[20];
+    char raspuns_pentru_admin_request105[100];
+    char username_and_password[50];
+    FILE* add_new_user;
+
+    //needed for request 106
+    char request6_categorie[50];
+    char request6_numeanunt[50];
+    char comanda_rm_anunt_din_categorie[120];
+    char raspuns_pentru_admin_request106[120];
 
 
     while(_rc = recv(*_adminsockfd, &_line, MAXLINE, 0)){
@@ -80,19 +94,30 @@ void* adminThreadRoutine(void* args){
            printf("    DEBUG MSG: req. admin 102 %s \n",name_of_category);
 
            struct stat st = {0};
-           strcpy(full_path_category, "./");
-           strcat(full_path_category, name_of_category);
+           //strcpy(full_path_category, "./");
+           //strcat(full_path_category, name_of_category);
+           snprintf(full_path_category, sizeof(full_path_category), "./%s", name_of_category);
 
             if (stat(full_path_category, &st) == -1) { ///<dir does NOT exist, can create
-                printf("    ->DEBUG MSG: dir dose not exist, creating %s ...\n",full_path_category);
+            
+                printf("    ->DEBUG MSG: dir dose not exist, creating %s ...\n", full_path_category);    
                 if (mkdir(full_path_category, 0777) != 0){ ///<error occurred at creating dir
                     printf("    -->DEBUG MSG: error at creating...\n");
                     // send(*_adminsockfd, "-1", 2, 0);
                 }
+                else //succes la creare director cu mkdir
+                {
+                    snprintf(raspuns_pentru_admin_request102, sizeof(raspuns_pentru_admin_request102), "Categoria %s a fost adaugata cu succes", name_of_category);
+                    write(*_adminsockfd, raspuns_pentru_admin_request102, strlen(raspuns_pentru_admin_request102));
+                }
             } else{///<dir does exist, cannot create
-                printf("    ->DEBUG MSG: dir  exist at path...  %s\n",full_path_category);
+                printf("    ->DEBUG MSG: dir  exist at path...  %s\n", full_path_category);
+                snprintf(raspuns_pentru_admin_request102, sizeof(raspuns_pentru_admin_request102), "Categoria %s exista deja", name_of_category);
+                write(*_adminsockfd, raspuns_pentru_admin_request102, strlen(raspuns_pentru_admin_request102));
                 // send(*_adminsockfd, "-2", 2, 0);
             }
+
+
 
         /*======REQUEST 103======*/
         } else if(strncmp(_line, "103", 3) == 0){ ///< view connected users request
@@ -102,7 +127,7 @@ void* adminThreadRoutine(void* args){
                 strcat(connected_users_string, connected_users[i].username);
                 strcat(connected_users_string, " ");
             }
-            send(*_adminsockfd, connected_users_string, strlen(connected_users_string), 0);
+            write(*_adminsockfd, connected_users_string, strlen(connected_users_string));
 
         /*======REQUEST 104======*/
         } else if(strncmp(_line, "104", 3) == 0){ ///< ban client request
@@ -154,19 +179,72 @@ void* adminThreadRoutine(void* args){
             printf("    DEBUG MSG: ERROR at sytem call for py script \n");
         }
 
+        // construire si trimitere raspuns catre admin pentru request-ul 4
+        snprintf(raspuns_pentru_admin_request104, sizeof(raspuns_pentru_admin_request104), "User-ul cu numele %s a fost banat, iar conexiunea a fost inchisa!", username_ban);
+        write(*_adminsockfd, raspuns_pentru_admin_request104, strlen(raspuns_pentru_admin_request104));
+
+
+
+
+
+
         /*======REQUEST 105======*/
         } else if(strncmp(_line, "105", 3) == 0){ ///< add user request
             printf("    DEBUG MSG: req. admin 105 \n");
+            sscanf (_line,"%*s %s %s", username_to_add, password_to_add);
+            
+            //contruire format de adaugat in fisier : nume_user parola_user
+            snprintf(username_and_password, sizeof(username_and_password), "\n%s %s", username_to_add, password_to_add);
+            add_new_user = fopen("users.txt", "a");
+            fputs(username_and_password, add_new_user);
+            fclose(add_new_user);
+
+            //construire si trimitere raspuns catre admin pentru request-ul 5
+            snprintf(raspuns_pentru_admin_request105, sizeof(raspuns_pentru_admin_request105), "User-ul >%s< a fost creat cu succes!", username_to_add);
+            write(*_adminsockfd, raspuns_pentru_admin_request105, strlen(raspuns_pentru_admin_request105));
 
         /*======REQUEST 106======*/
+        // Request type 6 format => Stergere anunt : 6 categorie nume_anunt
         } else if(strncmp(_line, "106", 3) == 0){ ///< delete user entry request
             printf("    DEBUG MSG: req. admin 106  \n");
+            sscanf (_line,"%*s %s %s", request6_categorie, request6_numeanunt);
+            
+            //construire path pentru stergere data anunt(imagine, descriere anunt)
+            snprintf(comanda_rm_anunt_din_categorie, sizeof(comanda_rm_anunt_din_categorie), "rm ./%s/%s.*", request6_categorie, request6_numeanunt);
+
+            if (system(comanda_rm_anunt_din_categorie) == -1)
+            {
+                printf("    DEBUG MSG: ERROR at sytem call for py script \n");
+                //construire si trimitere raspuns catre admin pentru request-ul 5
+                snprintf(raspuns_pentru_admin_request106, sizeof(raspuns_pentru_admin_request106), "Verificati daca numele anuntului >%s< este introdus corect!", request6_numeanunt);
+            }
+            else
+            {
+                printf("    DEBUG MSG: apelul system() pentru stergere anunt a fost executat cu succes.\n");
+                //construire si trimitere raspuns catre admin pentru request-ul 5
+                snprintf(raspuns_pentru_admin_request106, sizeof(raspuns_pentru_admin_request106), "Anuntul cu numele >%s< a fost sters cu succes!", request6_numeanunt);
+            }
+
+            write(*_adminsockfd, raspuns_pentru_admin_request106, strlen(raspuns_pentru_admin_request106));
+
+        }// end of request 106
+
+        else if(strncmp(_line, "107", 3) == 0)
+        {
+            write(*_adminsockfd, "[LOGOUT] Admin deconectat cu succes de la server", strlen("[LOGOUT] Admin deconectat cu succes de la server"));
+            close(*_adminsockfd);
+            
+            //allow other admins to connect
+            pthread_mutex_lock(&mutex);
+            admin_is_conn = FALSE;
+            pthread_mutex_unlock(&mutex);
+
+            printf("[LOGOUT] Admin deconectat cu succes de la server.\n");
+            pthread_exit(_adminsockfd);
+
         }
 
-        
-
-        printf("Line received %s\n",_line);
-
+        printf("Line received:   >>>%s<<<\n",_line);
 
     }
 
@@ -184,7 +262,7 @@ void main(int argc, char const *argv[]){
     readClients("users.txt", users, &users_count);///< bring in local memory the users
     readClients("admins.txt", admins, &admins_count);///< bring in local memory the users
 
-    printf("**DEBUG MSG: First admnin extract: username_admin:%s password:%s\n", admins[0].password, admins[0].username); 
+    printf("**DEBUG MSG: First admnin extract: username_admin:%s password:%s\n", admins[0].username, admins[0].password); 
     //Main local variabiles 
     //(to be inherited by children processes and shared with threads)
     struct sockaddr_in cli_addr, serv_addr;///< addresses for client and server

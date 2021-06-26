@@ -84,7 +84,7 @@ void comunicareSocketAdminServer()
             fgets(request5_user, sizeof(request5_user), stdin);
             request5_user[strcspn(request5_user, "\n")] = 0;       //eliminare \n adaugat de fgets
 
-            printf("\n Introduceti parola user pe care doroti sa-l creati: ");
+            printf("\n Introduceti parola user pe care doriti sa-l creati: ");
             fgets(request5_parola, sizeof(request5_parola), stdin);
             request5_parola[strcspn(request5_parola, "\n")] = 0;       //eliminare \n adaugat de fgets
 
@@ -115,15 +115,18 @@ void comunicareSocketAdminServer()
             snprintf(request_concatenat, 120, "%s", "107");
             write(sockfd, request_concatenat, sizeof(request_concatenat));
 
+            // doar in cazul logout citit raspuns de la server in interior, altfel nu mai este posibil dupa apel kill()..
+            bzero(buff, sizeof(buff));     //golire buffer
+            read(sockfd, buff, sizeof(buff));
+            printf("\nRaspuns server : \n%s\n", buff);    
+
             signal(SIGINT, handler_sigint);
             kill(getpid(), SIGINT);
-            exit(0);
-
         }
 
         bzero(buff, sizeof(buff));     //golire buffer
         read(sockfd, buff, sizeof(buff));
-        printf("Raspuns server : %s\n", buff);
+        printf("\nRaspuns server : %s\n", buff);
 
     }
 }
