@@ -50,7 +50,7 @@ client admins[MAXNOADMINS];///< store all existing admins
 // // int pipe_fd_child[2];
 
 int users_count = 0;
-int conn_users_count = 0;
+int conn_users_count;
 
 int admins_count = 0;
 BOOL admin_is_conn = FALSE;///< admin conn must be unique
