@@ -1,5 +1,3 @@
 user_a pass_a
-user_c pass_c
-user_d pass_d
 user_e pass_e
 user_f pass_f

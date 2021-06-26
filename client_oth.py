@@ -119,7 +119,7 @@ except:
 for opt, arg in opts:
     if opt in ['-u']:
         user = arg
-    else if opt in ['-p']:
+    elif opt in ['-p']:
         parola = arg
 
 user_and_parola = "1" + user + " " + parola

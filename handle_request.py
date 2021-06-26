@@ -15,6 +15,8 @@ for opt, arg in opts:
     elif opt in ['-u']:
         user = arg
 
+# flag = sys.argv[1]
+# user = sys.argv[2]
 def banUser():
     user_to_ban = ""
 

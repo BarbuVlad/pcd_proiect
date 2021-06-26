@@ -59,6 +59,13 @@ void* adminThreadRoutine(void* args){
     BOOL swap = FALSE;
     int _err;
     int statusCode;
+    int path_max = 200;
+    FILE *fp;
+    int status;
+    char path[path_max];
+    char python_command[100];
+
+
 
     while(_rc = recv(*_adminsockfd, &_line, MAXLINE, 0)){
         _line[_rc] = '\0';
@@ -129,6 +136,7 @@ void* adminThreadRoutine(void* args){
             for(int i = 0; i<users_count; i++){
                 if (strncmp(username_ban, users[i].username, strlen(users[i].username)) == 0){
                     swap=TRUE;///< start to swap from this i index
+                    printf("    DEBUG MSG: swapping users from index: %d \n", i);
                 }
                 if(swap==TRUE){
                     strcpy(users[i].username, users[i + 1].username);
@@ -140,28 +148,11 @@ void* adminThreadRoutine(void* args){
                 //delete from users.txt entry
                 //add to users_ban.txt
                 //delete objects added by that user
-            int pid_py_exec = fork();
-            if(pid_py_exec == -1){printf("    DEBUG MSG: ERROR at fork for python exec  \n");}
 
-            if(pid_py_exec == 0){ //Child process (exec py script)
-                _err = execlp("python3", "python3", "", username_ban, (char*) NULL);
-                 if(_err==-1){printf("    DEBUG MSG: ERROR at python exec  \n");}
-            }   else {//Parent process
-                waitpid(pid_py_exec, &_err, 0); //_err used as __stat_loc
-                 if(WIFEXITED(_err)){
-                     //EXECUTION TERMINATED SUCCESSFULLY (for the waited child)
-                    statusCode = WEXITSTATUS(_err);///< returned value or exit code value
-                     if(statusCode==0){///< if code 0 is success
-                        //SUCCESSFUL EXECUTION FROM CHILD
-                        printf("    DEBUG MSG: Successfull at python exec  \n");
-                    } else {
-                        //EXECUTION FAILURE FROM CHILD
-                         printf("    DEBUG MSG: ERROR at python exec...  \n");
-                    }
-                 }
-            }
-        
-            //python3 handle_request.py -ban -user1
+        snprintf(python_command, sizeof(python_command), "python3 handle_request.py -f ban -u %s", username_ban);
+        if (system(python_command) == -1){
+            printf("    DEBUG MSG: ERROR at sytem call for py script \n");
+        }
 
         /*======REQUEST 105======*/
         } else if(strncmp(_line, "105", 3) == 0){ ///< add user request
