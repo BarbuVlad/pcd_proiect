@@ -342,6 +342,10 @@ int main(int argc, char *argv[])
     {
         printf("\t[LOGIN INCORECT] Datele de login sunt incorecte, verifica user si/sau parola si reincearca.\n\n");
     }
+    else if(strncmp(buff, "3", 1) ==0)
+    {
+        printf("\t[LOGIN INCORECT] Datele de login sunt incorecte, verifica user si/sau parola si reincearca.\n\n");
+    }
 
     // close the socket
     close(sockfd);
