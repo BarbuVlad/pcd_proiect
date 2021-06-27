@@ -427,13 +427,132 @@ request5_parola[ strcspn(request5_parola, "\n") ] = 0;       //eliminare \n adau
                         printf("DEBUG MSG: client fork continue; user connected! \n");
                         break;
                     }
+
+
+                    
+
+
+
                 }
+
                 //if no user found
                 if(x == FALSE){
                     send(accepted_sockfd, "3", 1, 0);///< user not found
                     printf("DEBUG MSG: client fork ended; no user found (3) \n");
                     kill(getpid(), SIGTERM);
                 }
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+                printf("   ->DEBUG MSG: aici se implementeaza req!\n");
+                // declarare variabile pentru implemetare req pentru client
+                int _rc_client;
+                char _line_client[MAXLINE];
+
+                //needed for request 2
+                char raspuns_pentru_client_request2[200];
+                char list_dir_command[100];
+                FILE *fp_client_req2;
+                int currentChar;
+                char currentCharAsChar[10];
+
+                //needed for request 3
+                char raspuns_pentru_client_request3[200], list_anunt_command_req3[100], categorie_req3[30];
+                FILE *fp_client_req3;
+                int currentCharReq3, counterReq3 = 0;
+                char currentCharAsCharReq3[5];
+
+                //needed for request 6
+                char raspuns_pentru_client_request6[200], rm_anunt_command_req6[80], categorie_req6[30], nume_anunt_req6[30];
+
+                while(_rc_client = recv(accepted_sockfd, &_line_client, MAXLINE, 0))
+                {
+                    // printf("; rc is: %d\n", rc);
+                    _line_client[_rc_client] = '\0';
+
+                    /*======REQUEST 2======*/
+                    if(strncmp(_line_client, "2", 1) == 0)
+                    // Vizualizare categorii anunturi.         Req format>> 2
+                    {
+                        printf("Se ajunge in req2\n\n");
+                        // TODO: returneaza toate directoarele din ./
+                        bzero(raspuns_pentru_client_request2, sizeof(raspuns_pentru_client_request2));  //golrie char array pentru eliminare primire garbage
+                        snprintf(list_dir_command, sizeof(list_dir_command), "ls -d */ | cut -f1 -d'/' > result.txt");
+                        if (system(list_dir_command) != -1)
+                        {
+                            printf("    DEBUG MSG: Comanda prin apel system a fost executata cu succes\n");
+                        }
+                        else
+                        {
+                            printf("    DEBUG MSG: system() call failed\n");
+                        }
+                        sleep(0.1);
+                        fp_client_req2 = fopen("result.txt", "r");
+                        if(fp_client_req2 != NULL)
+                        {
+                            // read a single char in for each loop iteration
+                            while ((currentChar = fgetc(fp_client_req2)) != EOF)
+                            {
+                                snprintf(currentCharAsChar, sizeof(currentCharAsChar), "%c", currentChar);
+                                strcat(raspuns_pentru_client_request2, currentCharAsChar);
+                            }
+                        }
+                        write(accepted_sockfd, raspuns_pentru_client_request2, strlen(raspuns_pentru_client_request2));
+                    } //end of request 2
+
+                     /*======REQUEST 3======*/
+                    else if(strncmp(_line_client, "3", 1) == 0)
+                    // Vizualizare anunturi din categorie.         Req format>> 3 categorie
+                    {
+                        printf("Se ajunge in req3, playload ---%s---\n\n", _line_client);
+                        //TODO: returneaza toate anunturile din categoria aleasa > ls categorie/*txt | cut -f2 -d'/' | cut -f1 -d'.'
+                        bzero(raspuns_pentru_client_request3, sizeof(raspuns_pentru_client_request3));  //golrie char array pentru eliminare primire garbage
+                        // Construire comanda pentru apel system()
+                        sscanf(_line_client,"%*s %s", categorie_req3);
+                        snprintf(list_anunt_command_req3, sizeof(list_anunt_command_req3), "ls %s/*txt | cut -f2 -d'/' | cut -f1 -d'.' > result.txt", categorie_req3);
+                        if (system(list_anunt_command_req3) != -1)
+                        {
+                            printf("   DEBUG MSG: Comanda system(ls %s/*txt | cut -f2 -d'/' | cut -f1 -d'.' > result.txt) a fost executata cu succes\n\n", categorie_req3);
+                        }
+                        sleep(0.1);
+                        fp_client_req3 = fopen("result.txt", "r");
+                        if(fp_client_req3 != NULL)
+                        {
+                            // read a single char in for each loop iteration
+                            while ((currentCharReq3 = fgetc(fp_client_req3)) != EOF)
+                            {
+                                snprintf(currentCharAsCharReq3, sizeof(currentCharAsCharReq3), "%c", currentCharReq3);
+                                strcat(raspuns_pentru_client_request3, currentCharAsCharReq3);
+                            }
+                        }
+                        printf("ciudat=%s.", raspuns_pentru_client_request3);
+                        write(accepted_sockfd, raspuns_pentru_client_request3, strlen(raspuns_pentru_client_request3));
+                    } //end of request 3
+
+
+                      /*======REQUEST 6======*/
+                    else if(strncmp(_line_client, "6", 1) == 0)
+                    // Request type 6 format => Sterge anunt : 6 categorie nume_anunt
+                    {
+                        //char raspuns_pentru_client_request6[200], rm_anunt_command_req6[50], categorie_req6[30], nume_anunt_req6[30];
+                        printf("Se ajunge in req6, playload ---%s---\n\n", _line_client);
+                        bzero(raspuns_pentru_client_request6, sizeof(raspuns_pentru_client_request6));
+                        // TODO: sterge anunt din categoria dorita > rm ./categorie/nume_anunt.*
+                        sscanf(_line_client,"%*s %s %s", categorie_req6, nume_anunt_req6);
+                        snprintf(rm_anunt_command_req6, sizeof(rm_anunt_command_req6), "rm ./%s/%s.*", categorie_req6, nume_anunt_req6);
+
+                        if (system(rm_anunt_command_req6) != -1)
+                        {
+                            printf("   DEBUG MSG: Comanda system(rm ./categorie/nume_anunt.*) a fost executata cu succes\n\n");
+                        }
+
+                        snprintf(raspuns_pentru_client_request6, sizeof(raspuns_pentru_client_request6), "Anuntul >%s< din categoria >%s< a fost sters cu succes", nume_anunt_req6, categorie_req6);
+                        write(accepted_sockfd, raspuns_pentru_client_request6, strlen(raspuns_pentru_client_request6));
+                    }
+
+                }// acolada while recv
+
 
 
             }

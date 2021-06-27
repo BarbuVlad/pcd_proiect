@@ -123,9 +123,9 @@ void comunicareSocketClientServer()
         printf("\t**********************************************************************************\n");
         printf("\t2. Vizualizare categorii anunturi.         Req format>> 2\n");
         printf("\t3. Vizualizare anunturi din categorie.     Req format>> 3 categorie\n");
-        printf("\t4. Vizualizare anunt specific.             Req format>> 4 nume_anunt\n");
-        printf("\t5. Adauga anunt nou.                       Req format>> 5 nume_anunt_de_adaugat\n");
-        printf("\t6. Sterge anunt propriu.                   Req format>> 6 nume_anunt_propriu\n");
+        printf("\t4. Vizualizare anunt specific.             Req format>> 4 categorie nume_anunt\n");
+        printf("\t5. Adauga anunt nou.                       Req format>> 5 categorie anunt nume_anunt_de_adaugat\n");
+        printf("\t6. Sterge anunt propriu.                   Req format>> 6 categorie nume_anunt_propriu\n");
         printf("\t7. Logout                                  Req format>> 7\n");
         printf("\t**********************************************************************************\n\n");
         
@@ -144,6 +144,10 @@ void comunicareSocketClientServer()
             // construire request final de trimis catre server
             snprintf(request_concatenat, 120, "%s", "2");
             write(sockfd, request_concatenat, sizeof(request_concatenat));
+
+            bzero(buff, sizeof(buff));             // golire buffer
+            read(sockfd, buff, sizeof(buff));      // citire raspuns server final server pentru un request dat anterior
+            printf("%s\n", buff);
         }
         else if(optiune_request == 3)
         // Request type 3 format => Vizualizare anunturi din categorie : 3 categorie
@@ -155,17 +159,22 @@ void comunicareSocketClientServer()
             write(sockfd, request_concatenat, sizeof(request_concatenat));
             
             // citire raspuns server cu lista de categorii
-            bzero(buff, sizeof(buff));     //golire buffer
-            read(sockfd, buff, sizeof(buff));
-            printf("Raspuns server : %s\n", buff);
+            bzero(buff, sizeof(buff));             // golire buffer
+            read(sockfd, buff, sizeof(buff));      // citire raspuns server final server pentru un request dat anterior
+            printf("%s\n", buff);
             
             // alegere categorie dorita pentru a vedea anunturile
-            printf("\nAlegeti categoria dorita pentru a vedea anunturile din categoria aleasa:\n");
+            printf("\nAlegeti categoria dorita pentru a vedea anunturile din categoria aleasa: ");
             fgets(request3_categorie, sizeof(request3_categorie), stdin);
             request3_categorie[strcspn(request3_categorie, "\n")] = 0;       //eliminare \n adaugat de fgets
 
             snprintf(request_concatenat, 120, "%s %s", "3", request3_categorie);
             write(sockfd, request_concatenat, sizeof(request_concatenat));
+
+            // citire raspuns server cu anunturi din categoria aleasa
+            bzero(buff, sizeof(buff));             // golire buffer
+            read(sockfd, buff, sizeof(buff));      // citire raspuns server final server pentru un request dat anterior
+            printf("Anunturile din categoria %s sunt:\n%s\n",request3_categorie, buff);
         }
         else if(optiune_request == 4)
         // Request type 4 format => Vizualizare anunt specific : 4 categorie nume_anunt
@@ -182,7 +191,7 @@ void comunicareSocketClientServer()
             printf("Raspuns server : %s\n", buff);
 
             // alegere categorie dorita pentru a vedea anunturile
-            printf("\nAlegeti categoria dorita pentru a vedea anunturile din categoria aleasa:\n");
+            printf("\nAlegeti categoria dorita pentru a vedea anunturile din categoria aleasa: ");
             fgets(request4_categorie, sizeof(request4_categorie), stdin);
             request4_categorie[strcspn(request4_categorie, "\n")] = 0;       //eliminare \n adaugat de fgets
 
@@ -237,10 +246,32 @@ void comunicareSocketClientServer()
         else if(optiune_request == 6)
         // Request type 6 format => Sterge anunt : 6 categorie nume_anunt
         {
+            printf("Categoriile anunturilor sunt:\n");
+
+            // construire request final de trimis catre server
+            snprintf(request_concatenat, 120, "%s", "2");
+            write(sockfd, request_concatenat, sizeof(request_concatenat));
+            
+            // citire raspuns server cu lista de categorii
+            bzero(buff, sizeof(buff));             // golire buffer
+            read(sockfd, buff, sizeof(buff));      // citire raspuns server final server pentru un request dat anterior
+            printf("%s\n", buff);
+
             // alegere categorie dorita pentru a publica anunt anunturile
             printf("\nAlegeti categoria din care doriti sa stergeti anuntul dvs.: ");
             fgets(request6_categorie, sizeof(request6_categorie), stdin);
             request6_categorie[strcspn(request6_categorie, "\n")] = 0;       //eliminare \n adaugat de fgets
+
+            // construire request 3 de trimis catre server
+            snprintf(request_concatenat, 120, "%s %s", "3", request6_categorie);
+            write(sockfd, request_concatenat, sizeof(request_concatenat));
+            // golire date request_concatenat
+            bzero(request_concatenat, sizeof(request_concatenat));
+
+            // citire raspuns server cu anunturi din categoria aleasa
+            bzero(buff, sizeof(buff));             // golire buffer
+            read(sockfd, buff, sizeof(buff));      // citire raspuns server final server pentru un request dat anterior
+            printf("%s\n", buff);
 
             // alegere nume anunt dorit pentru stergere
             printf("\nIntroduceti numele anuntului pe care doriti sa-l stergeti: ");
@@ -250,6 +281,11 @@ void comunicareSocketClientServer()
             // construire request final de trimis catre server
             snprintf(request_concatenat, 120, "%s %s %s", "6", request6_categorie, request6_nume_anunt);
             write(sockfd, request_concatenat, sizeof(request_concatenat));
+
+            // citire raspuns server cu lista de categorii
+            bzero(buff, sizeof(buff));     //golire buffer
+            read(sockfd, buff, sizeof(buff));
+            printf("Raspuns server : %s\n", buff);
         }
         else if(optiune_request == 7)
         // Request type 6 format => Logout: 7
@@ -264,9 +300,9 @@ void comunicareSocketClientServer()
             exit(0);
         }
 
-        bzero(buff, sizeof(buff));             // golire buffer
-        read(sockfd, buff, sizeof(buff));      // citire raspuns server final server pentru un request dat anterior
-        printf("Raspuns server : %s\n", buff);
+        // bzero(buff, sizeof(buff));             // golire buffer
+        // read(sockfd, buff, sizeof(buff));      // citire raspuns server final server pentru un request dat anterior
+        // printf("Raspuns server : \n%s\n", buff);
 
     }
 }
