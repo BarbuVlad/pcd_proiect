@@ -1,0 +1,6 @@
+user_a pass_a
+user_f pass_f
+user_b pass_b
+merge iar
+azi trecem
+usernou parolanoua
