@@ -1,2 +1,1 @@
-1234_user_b
-abc_user_b
+telefoane

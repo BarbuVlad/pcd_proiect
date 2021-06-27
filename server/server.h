@@ -25,10 +25,11 @@
 #define MAXNOUSERS 100
 #define MAXNOADMINS 10
 
-
 #define BOOL int
 #define TRUE 1
 #define FALSE 0
+
+#define SOCK_PATH_UNIX  "/tmp/unix_sock.server"
 
 typedef struct connections{
 	pid_t pid_child;
@@ -47,9 +48,6 @@ connections connected_users[MAXNOUSERS];///< store all connected users
 
 client admins[MAXNOADMINS];///< store all existing admins
 
-//  int pipe_fd_parent[2];// 0 - read          1 - write
-// // int pipe_fd_child[2];
-
 int users_count = 0;
 int conn_users_count = 0;
 
@@ -59,7 +57,5 @@ BOOL admin_is_conn = FALSE;///< admin conn must be unique
 pthread_mutex_t mutex;///<admin conn...
 int sockfd;
 
-char locatii[256][256];
-int nr_locatii = 0;
-
+pid_t parent;
 #endif

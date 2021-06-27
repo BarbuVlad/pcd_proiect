@@ -6,11 +6,14 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <signal.h>
+#include <sys/un.h>
 
 #define MAX 512
-#define IP_ADDRESS "127.0.0.1"
 #define PORT 5000
 #define SA struct sockaddr
+
+#define SERVER_PATH "/tmp/unix_sock.server"
+#define CLIENT_PATH "/tmp/unix_sock.client"
 
 int sockfd;
 char buff[MAX]; //buffer pentru citire din socket
@@ -134,13 +137,17 @@ void comunicareSocketAdminServer()
 int main(int argc, char *argv[])
 {
     signal(SIGINT, handler_sigint);
-    
-    int opt;   // pentru getopt
-    char user[50], parola[50], user_and_parola[110];    //folosite pentru login
-    struct sockaddr_in servaddr, cli;
+    //struct sockaddr_in servaddr, cli;
+
+    int rc, len;//client_sock, 
+    struct sockaddr_un server_sockaddr; 
+    struct sockaddr_un client_sockaddr; 
+    char buf[256];
+    memset(&server_sockaddr, 0, sizeof(struct sockaddr_un));
+    memset(&client_sockaddr, 0, sizeof(struct sockaddr_un));
   
     // socket create and varification
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (sockfd == -1)
     {
         printf("[EROARE] creare socket esuata...\n");
@@ -149,51 +156,40 @@ int main(int argc, char *argv[])
     else
         printf("[SUCCES] socket creat cu succes..\n");
 
-    bzero(&servaddr, sizeof(servaddr));
   
-    // assign IP, PORT
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_addr.s_addr = inet_addr(IP_ADDRESS);
-    servaddr.sin_port = htons(PORT);
-  
-    // connect the client socket to server socket
-    if (connect(sockfd, (SA*)&servaddr, sizeof(servaddr)) != 0)
-    {
-        printf("[EROARE] contexiunea la server a esuat...\n");
-        exit(0);
+    // // assign IP, PORT
+    // servaddr.sin_family = AF_INET;
+    // servaddr.sin_addr.s_addr = inet_addr(IP_ADDRESS);
+    // servaddr.sin_port = htons(PORT);
+
+    client_sockaddr.sun_family = AF_UNIX;   
+    strcpy(client_sockaddr.sun_path, CLIENT_PATH); 
+    len = sizeof(client_sockaddr);
+    
+    unlink(CLIENT_PATH);
+    rc = bind(sockfd, (struct sockaddr *) &client_sockaddr, len);
+    if (rc == -1){
+        printf("BIND ERROR: \n");
+        close(sockfd);
+        exit(1);
     }
-    else
+    //----------------------
+  // connect the client socket to server socket
+    server_sockaddr.sun_family = AF_UNIX;
+    strcpy(server_sockaddr.sun_path, SERVER_PATH);
+    rc = connect(sockfd, (struct sockaddr *) &server_sockaddr, len);
+    if(rc == -1){
+        printf("[EROARE] contexiunea la server a esuat...\n");
+        close(sockfd);
+        exit(1);
+    } else
         printf("[SUCCES] conectat cu succes la server..\n");
 
-    // daca conectarea la server a avut succes atunci citim user si paroola in vederea autentificarii
-    snprintf(user, sizeof(user), "%s", "no_user_inserted");
-    snprintf(parola, sizeof(parola), "%s", "no_password_inserted");
-
-    while ((opt = getopt(argc, argv, "u:p:")) != -1)
-    {
-        switch (opt)
-        {
-        case 'u':
-            user[0] = '\0';
-            strcpy(user, optarg);
-            break;
-        case 'p':
-            parola[0] = '\0';
-            strcpy(parola, optarg);
-            break;
-        }
-    }
  
 
-    //   ************* Request login de forma    => 1 user parola *************
-    // trimite credentiale pentru login
-    bzero(user_and_parola, sizeof(user_and_parola));                    //make sure its empty
-    snprintf(user_and_parola, sizeof(user_and_parola), "%s %s %s", "101", user, parola);
+    //   ************* Request conn *************
+    recv(sockfd, &buff, 100, 0); 
 
-    write(sockfd, user_and_parola, sizeof(user_and_parola));
-    recv(sockfd, &buff, 100, 0);  //citim raspuns server relativ la login(succes, cont/parola gresita, admin deja conectat)
-
-    printf("Incercare autentificare:\n");
     if(strncmp(buff, "1", 1) ==0)
     {
         printf("\t[SUCCES] Admin conectat cu succes la server, incepe comunicarea.\n\n");

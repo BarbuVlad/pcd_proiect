@@ -417,8 +417,8 @@ void comunicareSocketClientServer()
             snprintf(request_concatenat, sizeof(request_concatenat), "%s", "7");
             write(sockfd, request_concatenat, sizeof(request_concatenat));
 
-            signal(SIGINT, handler_sigint);
-            kill(getpid(), SIGINT);
+            // signal(SIGINT, handler_sigint);
+            kill(getpid(), SIGTERM);
             exit(0);
         }
 
@@ -432,6 +432,8 @@ void comunicareSocketClientServer()
 
 int main(int argc, char *argv[])
 {
+    signal(SIGINT, handler_sigint);
+    
     int opt;   // pentru getopt
     struct sockaddr_in servaddr, cli;
   

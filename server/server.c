@@ -1,5 +1,10 @@
 #include "server.h"
 
+void handle_sigusr1(int sig){
+    conn_users_count-=1;
+    printf("*[P:%d] Child exit. Counter decremented: %d\n", getpid(),conn_users_count);
+}
+
 void readClients(char* location, client clients[], int* client_count){
     int client_count_local = *client_count;
     FILE *fp = fopen(location, "r");
@@ -18,6 +23,305 @@ void readClients(char* location, client clients[], int* client_count){
     }
     *client_count = client_count_local;
     fclose(fp);
+
+}
+
+void* unixServerRoutine(void *args){
+    printf("==============================\n[un_ser] Unix sever started (for local admin conn.)\n==============================\n");
+    /*Declare server variabiles*/
+    int server_sock, client_sock, rec;
+    int bytes_rec = 0;
+    struct sockaddr_un server_sockaddr;
+    struct sockaddr_un client_sockaddr;     
+    char buf[256];
+    int max_conn = 1;
+    memset(&server_sockaddr, 0, sizeof(struct sockaddr_un));
+    memset(&client_sockaddr, 0, sizeof(struct sockaddr_un));
+    memset(buf, 0, 256);   
+    /* Create a UNIX domain stream socket */
+    server_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (server_sock == -1){
+        printf("  SOCKET ERROR: \n");
+        pthread_exit(NULL);
+    }
+
+    /*Setup, initialize vars, bind*/
+    server_sockaddr.sun_family = AF_UNIX;   
+    strcpy(server_sockaddr.sun_path, SOCK_PATH_UNIX); 
+    
+    unlink(SOCK_PATH_UNIX);
+    rec = bind(server_sock, (struct sockaddr *) &server_sockaddr, sizeof(server_sockaddr));
+    if (rec == -1){
+        printf("  [un_ser] BIND ERROR \n" );
+        close(server_sock);
+        pthread_exit(NULL);
+    }
+
+    /* Listen for any client sockets */
+    rec = listen(server_sock, max_conn);
+    if (rec == -1){ 
+        printf("LISTEN ERROR: \n");
+        close(server_sock);
+        pthread_exit(NULL);
+    }
+    printf("  [un_ser] socket is listening...\n");
+
+
+    //needed for request 102
+    char name_of_category[30];
+    char full_path_category[50];
+    char raspuns_pentru_admin_request102[100];
+
+    //needed for request 103
+    char connected_users_string[50*conn_users_count];
+
+    //needed for request 104
+    char username_ban[20];
+    BOOL swap = FALSE;
+    int _err;
+    int statusCode;
+    int path_max = 200;
+    FILE *fp;
+    int status;
+    char path[path_max];
+    char python_command[100];
+    char raspuns_pentru_admin_request104[100];
+
+    //needed for request 105
+    char username_to_add[20];
+    char password_to_add[20];
+    char raspuns_pentru_admin_request105[100];
+    char username_and_password[50];
+    FILE* add_new_user;
+
+    //needed for request 106
+    char request6_categorie[50];
+    char request6_numeanunt[50];
+    char comanda_rm_anunt_din_categorie[120];
+    char raspuns_pentru_admin_request106[120];
+
+
+
+
+
+    while(1){
+        if(admin_is_conn == TRUE){
+
+            send(client_sock, "2", 1, 0);
+            continue;
+        }
+    bzero((char *)&client_sockaddr, sizeof(client_sockaddr));///< zero-out client address
+    int len;
+    client_sock = accept(server_sock, (struct sockaddr *) &client_sockaddr, &len);
+    if (client_sock == -1){
+        printf("  [un_ser] ACCEPT ERROR: \n");
+        close(server_sock);
+        close(client_sock);
+        pthread_exit(NULL);
+    }  else{
+        printf("  [un_ser] Admin conn accepted \n");
+        pthread_mutex_lock(&mutex);
+        admin_is_conn = TRUE;
+        pthread_mutex_unlock(&mutex);
+    }
+    /* Get the name of the connected socket */
+    len = sizeof(client_sockaddr);
+    rec = getpeername(client_sock, (struct sockaddr *) &client_sockaddr, &len);
+    if (rec == -1){
+        printf("  [un_ser] GETPEERNAME ERROR: \n");
+        close(server_sock);
+        close(client_sock);
+        pthread_exit(NULL);
+    }
+    else {
+        printf("  [un_ser] Admin client socket filepath: %s\n", client_sockaddr.sun_path);
+        send(client_sock, "1", 1, 0);
+    }
+
+    //Start to receive messages
+        while(bytes_rec = recv(client_sock, &buf, MAXLINE, 0)){
+        buf[bytes_rec] = '\0';
+
+        /*======REQUEST 102======*/
+        if(strncmp(buf, "102", 3) == 0){ ///< create new category request
+            /*
+            Body: 102 name_of_category
+            Action: extarct name_of_category and create a new directory in server root
+            */
+           sscanf (buf,"%*s %s",name_of_category);
+           printf("      [un_ser] DEBUG MSG: req. admin 102 %s \n",name_of_category);
+
+           struct stat st = {0};
+           //strcpy(full_path_category, "./");
+           //strcat(full_path_category, name_of_category);
+           snprintf(full_path_category, sizeof(full_path_category), "./%s", name_of_category);
+
+            if (stat(full_path_category, &st) == -1) { ///<dir does NOT exist, can create
+            
+                printf("      [un_ser] ->DEBUG MSG: dir dose not exist, creating %s ...\n", full_path_category);    
+                if (mkdir(full_path_category, 0777) != 0){ ///<error occurred at creating dir
+                    printf("      [un_ser] -->DEBUG MSG: error at creating...\n");
+                    // send(client_sock, "-1", 2, 0);
+                }
+                else //succes la creare director cu mkdir
+                {
+                    snprintf(raspuns_pentru_admin_request102, sizeof(raspuns_pentru_admin_request102), "Categoria %s a fost adaugata cu succes", name_of_category);
+                    write(client_sock, raspuns_pentru_admin_request102, strlen(raspuns_pentru_admin_request102));
+                }
+            } else{///<dir does exist, cannot create
+                printf("      [un_ser] ->DEBUG MSG: dir  exist at path...  %s\n", full_path_category);
+                snprintf(raspuns_pentru_admin_request102, sizeof(raspuns_pentru_admin_request102), "Categoria %s exista deja", name_of_category);
+                write(client_sock, raspuns_pentru_admin_request102, strlen(raspuns_pentru_admin_request102));
+                // send(client_sock, "-2", 2, 0);
+            }
+
+
+
+        /*======REQUEST 103======*/
+        } else if(strncmp(buf, "103", 3) == 0){ ///< view connected users request
+            printf("      [un_ser] DEBUG MSG: req. admin 103  \n");
+            strcpy(connected_users_string, "");
+            for(int i = 0; i<conn_users_count; i++){
+                strcat(connected_users_string, connected_users[i].username);
+                strcat(connected_users_string, " ");
+            }
+            if(conn_users_count>0){
+            write(client_sock, connected_users_string, strlen(connected_users_string));
+            } else {
+            write(client_sock, "no users connected", strlen("no users connected"));
+            }
+
+        /*======REQUEST 104======*/
+        } else if(strncmp(buf, "104", 3) == 0){ ///< ban client request
+            printf("      [un_ser] DEBUG MSG: req. admin 104  \n");
+            //extarct username
+            sscanf (buf,"%*s %s",username_ban);
+            //is this user connected?
+            for(int i = 0; i<conn_users_count; i++){
+                if (strncmp(username_ban, connected_users[i].username, strlen(connected_users[i].username)) == 0){
+                    //connected user found - save pid
+                    //pid_ban = connected_users[i].pid_child;
+                    //kill child process TODO: handle this signal (close fd and send to client smth)
+                    printf("      [un_ser] ->DEBUG MSG: user is connected; killing process...  \n");
+                            kill(getpid(), SIGUSR1);///< decrement parent counter
+                    kill(connected_users[i].pid_child, SIGTERM);
+                    swap=TRUE;
+                }
+                if(swap==TRUE){
+                    printf("       [un_ser] ->DEBUG MSG: swap data in connected_users...  \n");
+                    connected_users[i].pid_child = connected_users[i + 1].pid_child;
+                    strcpy(connected_users[i].username, connected_users[i + 1].username);
+                }
+            }
+            if(swap==TRUE){
+                pthread_mutex_lock(&mutex);
+                conn_users_count--;
+                pthread_mutex_unlock(&mutex);
+            }
+
+            //delete user from users list
+            swap = FALSE;
+            for(int i = 0; i<users_count; i++){
+                if (strncmp(username_ban, users[i].username, strlen(users[i].username)) == 0){
+                    swap=TRUE;///< start to swap from this i index
+                    printf("      [un_ser] DEBUG MSG: swapping users from index: %d \n", i);
+                }
+                if(swap==TRUE){
+                    strcpy(users[i].username, users[i + 1].username);
+                    strcpy(users[i].password, users[i + 1].password);
+                }
+            }
+
+            //call .py to:
+                //delete from users.txt entry
+                //add to users_ban.txt
+                //delete objects added by that user
+
+        snprintf(python_command, sizeof(python_command), "python3 handle_request.py -f ban -u %s", username_ban);
+        if (system(python_command) == -1){
+            printf("      [un_ser] DEBUG MSG: ERROR at sytem call for py script \n");
+        }
+
+        // construire si trimitere raspuns catre admin pentru request-ul 4
+        snprintf(raspuns_pentru_admin_request104, sizeof(raspuns_pentru_admin_request104), "User-ul cu numele %s a fost banat, iar conexiunea a fost inchisa!", username_ban);
+        write(client_sock, raspuns_pentru_admin_request104, strlen(raspuns_pentru_admin_request104));
+
+
+
+
+
+
+        /*======REQUEST 105======*/
+        } else if(strncmp(buf, "105", 3) == 0){ ///< add user request
+            printf("    DEBUG MSG: req. admin 105 \n");
+            sscanf (buf,"%*s %s %s", username_to_add, password_to_add);
+            
+            //contruire format de adaugat in fisier : nume_user parola_user
+            snprintf(username_and_password, sizeof(username_and_password), "\n%s %s", username_to_add, password_to_add);
+            add_new_user = fopen("users.txt", "a");
+            fputs(username_and_password, add_new_user);
+            fclose(add_new_user);
+
+            //construire si trimitere raspuns catre admin pentru request-ul 5
+            snprintf(raspuns_pentru_admin_request105, sizeof(raspuns_pentru_admin_request105), "User-ul >%s< a fost creat cu succes!", username_to_add);
+            write(client_sock, raspuns_pentru_admin_request105, strlen(raspuns_pentru_admin_request105));
+
+        /*======REQUEST 106======*/
+        // Request type 6 format => Stergere anunt : 6 categorie nume_anunt
+        } else if(strncmp(buf, "106", 3) == 0){ ///< delete user entry request
+            printf("      [un_ser] DEBUG MSG: req. admin 106  \n");
+            sscanf (buf,"%*s %s %s", request6_categorie, request6_numeanunt);
+            
+            //construire path pentru stergere data anunt(imagine, descriere anunt)
+            snprintf(comanda_rm_anunt_din_categorie, sizeof(comanda_rm_anunt_din_categorie), "rm ./%s/%s.*", request6_categorie, request6_numeanunt);
+
+            if (system(comanda_rm_anunt_din_categorie) == -1)
+            {
+                printf("      [un_ser] DEBUG MSG: ERROR at sytem call for py script \n");
+                //construire si trimitere raspuns catre admin pentru request-ul 5
+                snprintf(raspuns_pentru_admin_request106, sizeof(raspuns_pentru_admin_request106), "Verificati daca numele anuntului >%s< este introdus corect!", request6_numeanunt);
+            }
+            else
+            {
+                printf("      [un_ser] DEBUG MSG: apelul system() pentru stergere anunt a fost executat cu succes.\n");
+                //construire si trimitere raspuns catre admin pentru request-ul 5
+                snprintf(raspuns_pentru_admin_request106, sizeof(raspuns_pentru_admin_request106), "Anuntul cu numele >%s< a fost sters cu succes!", request6_numeanunt);
+            }
+
+            write(client_sock, raspuns_pentru_admin_request106, strlen(raspuns_pentru_admin_request106));
+
+        }// end of request 106
+
+        else if(strncmp(buf, "107", 3) == 0)
+        {
+            write(client_sock, "[LOGOUT] Admin deconectat cu succes de la server", strlen("[LOGOUT] Admin deconectat cu succes de la server"));
+            close(client_sock);
+            
+            //allow other admins to connect
+            pthread_mutex_lock(&mutex);
+            admin_is_conn = FALSE;
+            pthread_mutex_unlock(&mutex);
+
+            printf("  [un_ser] [LOGOUT] Admin deconectat cu succes de la server.\n");
+            pthread_exit(NULL);
+
+        }
+        printf("  [un_ser] Line received:   >>>%s<<<\n",buf);
+
+    }
+    
+
+
+    }
+
+    //Stop this thread server  [un_ser] 
+    printf("  [un_ser] Stopping UNIX admin...\n");
+    pthread_mutex_lock(&mutex);
+    admin_is_conn = FALSE;
+    pthread_mutex_unlock(&mutex);
+    close(server_sock);
+    close(client_sock);
+    pthread_exit(NULL);
 
 }
 
@@ -298,7 +602,11 @@ void* adminThreadRoutine(void* args){
                 strcat(connected_users_string, connected_users[i].username);
                 strcat(connected_users_string, " ");
             }
+            if(conn_users_count>0){
             write(*_adminsockfd, connected_users_string, strlen(connected_users_string));
+            } else {
+                write(*_adminsockfd, "no users connected", strlen("no users connected"));
+            }
 
         /*======REQUEST 104======*/
         } else if(strncmp(_line, "104", 3) == 0){ ///< ban client request
@@ -312,7 +620,9 @@ void* adminThreadRoutine(void* args){
                     //pid_ban = connected_users[i].pid_child;
                     //kill child process TODO: handle this signal (close fd and send to client smth)
                     printf("    ->DEBUG MSG: user is connected; killing process...  \n");
+                        kill(getpid(), SIGUSR1);///< decrement parent counter
                     kill(connected_users[i].pid_child, SIGTERM);
+                    //process copil sa tratam sigtrerm in alt mod 
                     swap=TRUE;
                 }
                 if(swap==TRUE){
@@ -429,15 +739,17 @@ void* adminThreadRoutine(void* args){
 }
 
 void main(int argc, char const *argv[]){
-    
+    parent = getpid();
+    pid_t pid_client = -1;
+    //SIGUSR1 - decrement conn users when child exits
+    struct sigaction sa = { 0 }; ///< we can tell how to handle the signal
+    sa.sa_flags = SA_RESTART; ///< necessary for scanf function
+    sa.sa_handler = &handle_sigusr1; ///< reference to function to treat signal
+    sigaction(SIGUSR1, &sa, NULL); ///< treat this signal NULL - another sigaction set beforehand will be saved in this
+
     readClients("users.txt", users, &users_count);///< bring in local memory the users
     readClients("admins.txt", admins, &admins_count);///< bring in local memory the users
 
-    // for(int i = 0; i < users_count; i++){
-    //     printf("PASSWORD: %s <--->",users[i].password);
-    //     printf("USERNAME: %s \n", users[i].username);
-
-    // }
     printf("**DEBUG MSG: First admnin extract: username_admin:%s password:%s\n", admins[0].password, admins[0].username); 
     //Main local variabiles 
     //(to be inherited by children processes and shared with threads)
@@ -468,16 +780,6 @@ void main(int argc, char const *argv[]){
         perror("setsockopt(SO_REUSEADDR) failed");}
 
 
-/*
-AF_INET - clienti la distanta 
-
-AF_UNIX STREAM -  admin masina locala 
-
-AF_UNIX DATAGRAM - pe post de pieps (IPC)
-
-request5_parola[ strcspn(request5_parola, "\n") ] = 0;       //eliminare \n adaugat de fgets
-
-*/
     //intialize address
     bzero((char *) &serv_addr, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;///< TCP IP
@@ -490,6 +792,14 @@ request5_parola[ strcspn(request5_parola, "\n") ] = 0;       //eliminare \n adau
 
     //listen for connections; exit 3 for error
     if(listen(sockfd, MAXNOUSERS) < 0) {perror("ERROR: at listen on socket"); exit(3);}
+
+    /* Star a new thread as a UNIX TCP sockets server.
+    Used to handle the admin connection */
+    pthread_t _id_unix_thread[2];
+    if( pthread_create(&_id_unix_thread[0], NULL, (void *)unixServerRoutine, NULL) != 0 ){
+        printf("==========\n[MAIN PID:%d] FAILED at starting unix sever thread (for local admin conn.)\n==========\n",  getpid());
+        //exit(4);
+    }
 
     //Start infinite loop to take connection
     for(;;){
@@ -548,24 +858,19 @@ request5_parola[ strcspn(request5_parola, "\n") ] = 0;       //eliminare \n adau
         } else if(strncmp(line, "1", 1) == 0){///< User login request
             bzero(username, sizeof(username));
             bzero(password, sizeof(password));
-
+fflush(stdin);
             sscanf (line,"%*s %s %s",username,password);
             password[strcspn(password, "\n")] = 0;
             printf("DEBUG MSG: client crdentials extracted: username:%s...password:%s...\n", username, password);
 
-            pid_t pid_client = fork();
+
+        //if(parent==getpid()){
+                pid_client = fork();
+       // }
+            
             if(pid_client == -1){printf("DEBUG MSG: client fork failed \n"); exit(5);}
 
 
-/*
-    P: 3
-    C: 3 (id al copil)
-
-    P: 3+1 =4 ..
-    C:
-
-
-*/
             /*======Solve client process======*/            
             if(pid_client == 0){
                 //is this user already connected?
@@ -577,10 +882,12 @@ request5_parola[ strcspn(request5_parola, "\n") ] = 0;       //eliminare \n adau
                     if(strncmp(username, connected_users[i].username, strlen(connected_users[i].username))==0){
                         send(accepted_sockfd, "2", 1, 0);///< user connected
                         printf("DEBUG MSG: client fork ended; user already connected (2) \n");
+                            kill(getppid(), SIGUSR1);///< decrement parent counter
                         kill(getpid(), SIGTERM);
                         break;
                     }
                 }
+        
                 
                 //are credentials good?
                 BOOL x = FALSE;
@@ -598,17 +905,13 @@ request5_parola[ strcspn(request5_parola, "\n") ] = 0;       //eliminare \n adau
                         break;
                     }
 
-
-                    
-
-
-
                 }
 
                 //if no user found
                 if(x == FALSE){
                     send(accepted_sockfd, "3", 1, 0);///< user not found
                     printf("DEBUG MSG: client fork ended; no user found (3) \n");
+                        kill(getppid(), SIGUSR1);///< decrement parent counter
                     kill(getpid(), SIGTERM);
                 }
 
@@ -663,7 +966,7 @@ request5_parola[ strcspn(request5_parola, "\n") ] = 0;       //eliminare \n adau
                         {
                             printf("    DEBUG MSG: system() call failed\n");
                         }
-                        sleep(0.1);
+                        usleep(100);
                         fp_client_req2 = fopen("result.txt", "r");
                         if(fp_client_req2 != NULL)
                         {
@@ -691,7 +994,7 @@ request5_parola[ strcspn(request5_parola, "\n") ] = 0;       //eliminare \n adau
                         {
                             printf("   DEBUG MSG: Comanda system(ls %s/*txt | cut -f2 -d'/' | cut -f1 -d'.' > result.txt) a fost executata cu succes\n\n", categorie_req3);
                         }
-                        sleep(0.1);
+                        usleep(100);
                         fp_client_req3 = fopen("result.txt", "r");
                         if(fp_client_req3 != NULL)
                         {
@@ -784,6 +1087,15 @@ request5_parola[ strcspn(request5_parola, "\n") ] = 0;       //eliminare \n adau
                         write(accepted_sockfd, raspuns_pentru_client_request6, strlen(raspuns_pentru_client_request6));
                     } //end of request 6
 
+                      /*======REQUEST 7======*/
+                    else if(strncmp(_line_client, "7", 1) == 0)
+                    // Request type 7 LOGOUT
+                    {
+                        printf("    [C:%d] Client exit...\n",getpid());
+                        kill(getppid(), SIGUSR1);///< decrement parent counter
+                        kill(getpid(), SIGTERM);
+                    } //end of request 6
+
                 }// acolada while recv
 
 
@@ -799,7 +1111,8 @@ request5_parola[ strcspn(request5_parola, "\n") ] = 0;       //eliminare \n adau
                 // pthread_mutex_lock(&mutex);
                 conn_users_count=conn_users_count+1;
                 // pthread_mutex_unlock(&mutex);
-printf("\n>>>DEBUG MSG: parent after child;  conn_users_count=%d usr=%s\n",conn_users_count, connected_users[conn_users_count-1].username);
+printf("\n\n>>>[P:%d] DEBUG MSG: parent after child;<<<\n", getpid());
+// printf("\n\n>>>[P:%d] DEBUG MSG: parent after child;  conn_users_count=%d<<<\n", getpid(),conn_users_count);
             }
         }
 

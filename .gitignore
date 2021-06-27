@@ -1,0 +1,7 @@
+# ignore compiled files
+admin/admin
+admin/admin_unix
+server/server
+/client/client
+/_snippites
+/.vscode
